@@ -1,9 +1,11 @@
 [package]
-name = "graph"
+name = "distr"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-petgraph = "0.6"
+geo = "0.28"
+rand = "0.8"
+rand_distr = "0.4"
 sqlx = { version = "0.7", features = ["runtime-tokio", "postgres"] }
 tokio = { version = "1", features = ["full"] }

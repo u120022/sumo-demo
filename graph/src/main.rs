@@ -23,23 +23,23 @@ async fn main() {
     for node in &nodes {
         tree.insert(rstar::primitives::GeomWithData::new(
             [node.1, node.2],
-            node.0 as u32,
+            node.0 as usize,
         ));
     }
 
     println!("[tree stats] node: {}", tree.size());
 
-    let mut graph = petgraph::Graph::<(), f32>::new();
+    let mut graph = petgraph::Graph::<(), f32, petgraph::Undirected>::new_undirected();
 
     for _ in &nodes {
         graph.add_node(());
     }
 
     for edge in &edges {
-        let n1 = edge.1 as u32 - 1;
-        let n2 = edge.2 as u32 - 1;
+        let n1 = petgraph::graph::NodeIndex::new(edge.1 as usize - 1);
+        let n2 = petgraph::graph::NodeIndex::new(edge.2 as usize - 1);
         let w = edge.3 / edge.4.unwrap_or(15.0).clamp(2.0, 15.0);
-        graph.add_edge(n1.into(), n2.into(), w);
+        graph.add_edge(n1, n2, w);
     }
 
     println!(
@@ -69,8 +69,9 @@ async fn main() {
 
     let mut paths = vec![];
     for plan in &plans {
-        let path =
-            petgraph::algo::dijkstra(&graph, plan.0.into(), Some(plan.1.into()), |e| *e.weight());
+        let n1 = petgraph::graph::NodeIndex::new(plan.0);
+        let n2 = petgraph::graph::NodeIndex::new(plan.1);
+        let path = petgraph::algo::dijkstra(&graph, n1, Some(n2), |e| *e.weight());
         paths.push(path);
         indicator.inc(1);
     }

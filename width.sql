@@ -8,7 +8,7 @@ CREATE TEMPORARY TABLE IF NOT EXISTS edge_seg AS (
     FROM (
         SELECT
             id,
-            (ST_DumpSegments(ST_Segmentize(geom::geography, 10.0)::geometry)).geom AS seg_geom,
+            (ST_DumpSegments(ST_Segmentize(geom::geography, 4.0)::geometry)).geom AS seg_geom,
             ST_Azimuth(ST_StartPoint(geom), ST_EndPoint(geom)) AS azimuth
         FROM
             edge

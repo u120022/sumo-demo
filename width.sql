@@ -16,11 +16,11 @@ CREATE TEMPORARY TABLE IF NOT EXISTS edge_seg AS (
 );
 
 DROP TABLE IF EXISTS normal;
-CREATE TABLE IF NOT EXISTS normal (
-    id Int,
+CREATE TEMPORARY TABLE IF NOT EXISTS normal (
+    id Int4,
     rayorigin_geom Geometry(Point, 6668),
     normal_geom Geometry(LineString, 6668),
-    face Boolean
+    face Bool
 );
 
 -- line normal (front face)
@@ -131,8 +131,8 @@ CREATE TEMPORARY TABLE IF NOT EXISTS width__seg AS (
 -- create width table
 DROP TABLE IF EXISTS width;
 CREATE TABLE IF NOT EXISTS width (
-    id Int REFERENCES edge (id),
-    width Real
+    id Int4 REFERENCES edge (id),
+    width Float8
 );
 
 -- insert width records

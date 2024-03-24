@@ -21,15 +21,15 @@ CREATE INDEX IF NOT EXISTS node_idx ON node USING GIST(geom);
 DROP TABLE IF EXISTS edge CASCADE;
 CREATE TABLE IF NOT EXISTS edge (
     id Serial PRIMARY KEY,
-    n1 Int REFERENCES node (id),
-    n2 Int REFERENCES node (id),
-    distance Real,
+    n1 Int4 REFERENCES node (id),
+    n2 Int4 REFERENCES node (id),
+    distance Float8,
     geom Geometry(LineString, 6668)
 );
 
 -- link node to node as edge
 INSERT INTO
-    edge (n1, n2, weight, geom)
+    edge (n1, n2, distance, geom)
 SELECT
     t2.id,
     t3.id,

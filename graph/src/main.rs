@@ -13,7 +13,7 @@ async fn main() {
         .unwrap();
 
     #[rustfmt::skip]
-    let edges: Vec<(i32, i32, i32, f32, Option<f32>)> = sqlx::query_as("SELECT e.id, e.n1, e.n2, e.distance, w.width FROM edge e JOIN width w ON e.id = w.id")
+    let edges: Vec<(i32, i32, i32, f64, Option<f64>)> = sqlx::query_as("SELECT e.id, e.n1, e.n2, e.distance, w.width FROM edge e JOIN width w ON e.id = w.id")
         .fetch_all(&pool)
         .await
         .unwrap();
@@ -29,10 +29,10 @@ async fn main() {
 
     println!("[tree stats] node: {}", tree.size());
 
-    let mut graph = petgraph::Graph::<(), f32, petgraph::Undirected>::new_undirected();
+    let mut graph = petgraph::Graph::<(f64, f64), f64, petgraph::Undirected>::new_undirected();
 
-    for _ in &nodes {
-        graph.add_node(());
+    for node in &nodes {
+        graph.add_node((node.1, node.2));
     }
 
     for edge in &edges {
@@ -65,17 +65,51 @@ async fn main() {
 
     println!("[plans stats] plans: {}", plans.len());
 
+    #[rustfmt::skip]
+    sqlx::query("DROP TABLE IF EXISTS path")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    #[rustfmt::skip]
+    sqlx::query("CREATE TABLE IF NOT EXISTS path (id Serial PRIMARY KEY, content Int4[])")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    #[rustfmt::skip]
+    sqlx::query("BEGIN")
+        .execute(&pool)
+        .await
+        .unwrap();
+
     let indicator = indicatif::ProgressBar::new(plans.len() as u64);
 
-    let mut paths = vec![];
     for plan in &plans {
         let n1 = petgraph::graph::NodeIndex::new(plan.0);
         let n2 = petgraph::graph::NodeIndex::new(plan.1);
         let path = petgraph::algo::dijkstra(&graph, n1, Some(n2), |e| *e.weight());
-        paths.push(path);
+
+        let path = path
+            .keys()
+            .map(|node| node.index() as i32)
+            .collect::<Vec<_>>();
+
+        #[rustfmt::skip]
+        sqlx::query("INSERT INTO path (content) VALUES ($1)")
+            .bind(&path)
+            .execute(&pool)
+            .await
+            .unwrap();
+
         indicator.inc(1);
     }
 
+    #[rustfmt::skip]
+    sqlx::query("COMMIT")
+        .execute(&pool)
+        .await
+        .unwrap();
+
     indicator.finish();
-    println!("[paths stats] paths: {}", paths.len());
 }

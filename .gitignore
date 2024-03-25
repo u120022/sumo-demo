@@ -1,7 +1,12 @@
+# shapefile
 *.dbf
 *.prj
 *.shp
 *.shx
+
+# cargo
 target
+
+# custom
 *.bin
 *.log

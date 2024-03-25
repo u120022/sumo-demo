@@ -54,7 +54,7 @@ async fn main() {
         }
     }
 
-    println!("{}", pairs.len());
+    println!("[pair stats] pair: {}", pairs.len());
 
     let xs = pairs.iter().map(|p| p.0).collect::<Vec<_>>();
     let ys = pairs.iter().map(|p| p.1).collect::<Vec<_>>();

@@ -1,0 +1,3 @@
+[workspace]
+members = [ "crawler/rdcl", "crawler/fgd", "macrosim/distr", "macrosim/graph" ]
+resolver = "2"

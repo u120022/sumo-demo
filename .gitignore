@@ -3,3 +3,5 @@
 *.shp
 *.shx
 target
+*.bin
+*.log

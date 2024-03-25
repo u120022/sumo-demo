@@ -4,6 +4,9 @@ use rand::prelude::*;
 // https://www.airia.or.jp/publish/statistics/trend.html
 const CAR_RATIO: f64 = 0.876;
 
+// interpolation
+const INTERPOLATION: f64 = 0.1;
+
 // reference https://www.nite.go.jp/chem/risk/expofactor_index.html
 const TIME_MEAN: f64 = 1.6125;
 const TIME_SD: f64 = 2.282465;
@@ -32,7 +35,7 @@ async fn main() {
     let angle_distr = rand::distributions::Uniform::new(0.0, 360.0);
     let distance_distr = rand_distr::Normal::new(TIME_MEAN, TIME_SD).unwrap();
     for mesh in meshes {
-        let pop = (mesh.0 * CAR_RATIO) as usize;
+        let pop = (mesh.0 * CAR_RATIO * INTERPOLATION) as usize;
 
         let x_distr = rand::distributions::Uniform::new(mesh.1, mesh.3);
         let y_distr = rand::distributions::Uniform::new(mesh.2, mesh.4);

@@ -65,26 +65,9 @@ async fn main() {
 
     println!("[plans stats] plans: {}", plans.len());
 
-    #[rustfmt::skip]
-    sqlx::query("DROP TABLE IF EXISTS path")
-        .execute(&pool)
-        .await
-        .unwrap();
-
-    #[rustfmt::skip]
-    sqlx::query("CREATE TABLE IF NOT EXISTS path (id Serial PRIMARY KEY, content Int4[])")
-        .execute(&pool)
-        .await
-        .unwrap();
-
-    #[rustfmt::skip]
-    sqlx::query("BEGIN")
-        .execute(&pool)
-        .await
-        .unwrap();
-
     let indicator = indicatif::ProgressBar::new(plans.len() as u64);
 
+    let mut paths = vec![];
     for plan in &plans {
         let n1 = petgraph::graph::NodeIndex::new(plan.0);
         let n2 = petgraph::graph::NodeIndex::new(plan.1);
@@ -95,21 +78,15 @@ async fn main() {
             .map(|node| node.index() as i32)
             .collect::<Vec<_>>();
 
-        #[rustfmt::skip]
-        sqlx::query("INSERT INTO path (content) VALUES ($1)")
-            .bind(&path)
-            .execute(&pool)
-            .await
-            .unwrap();
+        paths.push(path);
 
         indicator.inc(1);
     }
 
-    #[rustfmt::skip]
-    sqlx::query("COMMIT")
-        .execute(&pool)
-        .await
-        .unwrap();
-
     indicator.finish();
+
+    println!("[path stats] paths: {}", paths.len());
+
+    let bytes = postcard::to_extend(&paths, vec![]).unwrap();
+    std::fs::write("path.bin", &bytes).unwrap();
 }

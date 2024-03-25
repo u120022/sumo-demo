@@ -1,144 +1,170 @@
 use futures::StreamExt;
-use std::str::FromStr;
-
-fn to_tile_coord(x: f64, y: f64, z: i32) -> (i64, i64) {
-    let pi = std::f64::consts::PI;
-
-    let z_exp2 = 2.0f64.powi(z);
-
-    let y_rad = y.to_radians();
-
-    let x_tile = ((x + 180.0) / 360.0 * z_exp2) as i64;
-    let y_tile = ((1.0 - (y_rad.tan() + (1.0 / y_rad.cos())).ln() / pi) / 2.0 * z_exp2) as i64;
-
-    (x_tile, y_tile)
-}
 
 #[tokio::main]
 async fn main() {
-    let (x0, y0) = to_tile_coord(137.011029079, 36.646053135, 18);
-    let (x1, y1) = to_tile_coord(137.180130220, 36.793910577, 18);
+    match simple_logging::log_to_file("crawler.log", log::LevelFilter::Info) {
+        Ok(_) => (),
+        Err(err) => {
+            log::error!("failed to open log file ({})", err);
+            panic!("failed to open log file ({})", err);
+        }
+    }
 
-    let mut tiles: Vec<(i64, i64)> = vec![];
-    for y in i64::min(y0, y1)..i64::max(y0, y1) {
-        for x in i64::min(x0, x1)..i64::max(x0, x1) {
+    let (x0, y0) = slippy_map_tiles::lat_lon_to_tile(36.646053135, 137.011029079, 18);
+    let (x1, y1) = slippy_map_tiles::lat_lon_to_tile(36.793910577, 137.180130220, 18);
+
+    let mut tiles = vec![];
+    for y in u32::min(y0, y1)..u32::max(y0, y1) {
+        for x in u32::min(x0, x1)..u32::max(x0, x1) {
             tiles.push((x, y));
         }
     }
 
-    let pool = sqlx::postgres::PgPoolOptions::new()
+    #[rustfmt::skip]
+    let pool = match sqlx::postgres::PgPoolOptions::new()
         .connect("postgres://postgres:0@localhost/postgres")
         .await
-        .expect("failed to connect postgresql");
+    {
+        Ok(inner) => inner,
+        Err(err) => {
+            log::error!("failed to connect postgresql ({})", err);
+            panic!("failed to connect postgresql ({})", err);
+        }
+    };
+    let pool = std::sync::Arc::new(pool);
 
-    sqlx::query("DROP TABLE IF EXISTS fgd")
-        .execute(&pool)
+    #[rustfmt::skip]
+    match sqlx::query("DROP TABLE IF EXISTS fgd")
+        .execute(&*pool)
         .await
-        .expect("failed to drop table");
+    {
+        Ok(_) => (),
+        Err(err) => {
+            log::error!("failed to drop table ({})", err);
+            panic!("failed to drop table ({})", err);
+        }
+    };
 
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS fgd (id Serial PRIMARY KEY, type Text, geom Geometry(LineString, 6668))",
-    )
-    .execute(&pool)
-    .await
-    .expect("faile to create table");
+    #[rustfmt::skip]
+    match sqlx::query("CREATE TABLE IF NOT EXISTS fgd (id Serial PRIMARY KEY, type Text, geom Geometry(LineString, 6668))")
+        .execute(&*pool)
+        .await
+    {
+        Ok(_) => (),
+        Err(err) => {
+            log::error!("failed to create table ({})", err);
+            panic!("failed to create table ({})", err);
+        }
+    };
 
-    let client = reqwest::Client::new();
-    let n_progress = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let n_total = tiles.len();
+    let client = std::sync::Arc::new(reqwest::Client::new());
+    let pb = std::sync::Arc::new(indicatif::ProgressBar::new(tiles.len() as u64));
 
     futures::stream::iter(tiles)
         .map(|(xtile, ytile)| {
             let pool = pool.clone();
-
             let client = client.clone();
-            let n_progress = n_progress.clone();
+            let pb = pb.clone();
 
-            let url = format!(
-                "https://cyberjapandata.gsi.go.jp/xyz/experimental_fgd/18/{}/{}.geojson",
-                xtile, ytile
-            );
+            #[rustfmt::skip]
+            let url = format!("https://cyberjapandata.gsi.go.jp/xyz/experimental_fgd/18/{}/{}.geojson", xtile, ytile);
 
             async move {
+                pb.inc(1);
+
                 let response = match client.get(url).send().await {
                     Ok(inner) => inner,
                     Err(err) => {
-                        println!("invalid response: {}", err);
+                        log::warn!("({}, {}): failed to request on http ({})", xtile, ytile, err);
                         return;
                     },
                 };
 
                 if response.status() != reqwest::StatusCode::OK {
-                    println!("invalid status: {}", response.status());
+                    log::warn!("({}, {}): invalid http status ({})", xtile, ytile, response.status());
                     return;
                 }
 
                 let text = match response.text().await {
                     Ok(inner) => inner,
                     Err(err) => {
-                        println!("invalid content: {}", err);
+                        log::warn!("({}, {}): failed to read http body ({})", xtile, ytile, err);
                         return;
                     }
                 };
 
-                let geojson = match geojson::GeoJson::from_str(&text) {
+                let geojson = match text.parse::<geojson::GeoJson>() {
                     Ok(inner) => inner,
                     Err(err) => {
-                        println!("invalid format: {}", err);
+                        log::warn!("({}, {}): failed to parse as geojson ({})", xtile, ytile, err);
                         return;
                     }
                 };
 
-                let feats = match geojson::FeatureCollection::try_from(geojson) {
+                let features = match geojson::FeatureCollection::try_from(geojson) {
                     Ok(inner) => inner,
                     Err(err) => {
-                        println!("invalid format: {}", err);
+                        log::warn!("({}, {}): failed to get feature collection ({})", xtile, ytile, err);
                         return;
                     }
                 };
 
-                for feat in feats {
-                    let geojson::Feature { geometry, properties, ..} = feat;
+                let mut r#types = vec![];
+                let mut geometries = vec![];
+
+                for feature in features {
+                    let geojson::Feature { geometry, properties, ..} = feature;
 
                     let geometry = match geometry {
                         Some(inner) => inner,
                         None => {
-                            println!("no geometry");
+                            log::warn!("({}, {}): feature has no geometry", xtile, ytile);
                             continue;
                         }
                     };
 
                     if geometry.value.type_name() != "LineString" {
-                        println!("no LineString geometry");
+                        log::warn!("({}, {}): feature has no LineString geometry", xtile, ytile);
                         continue;
                     }
 
                     let properties = match properties {
                         Some(inner) => inner,
                         None => {
-                            println!("no properties");
+                            log::warn!("({}, {}): feature has no properties", xtile, ytile);
                             continue;
                         }
                     };
 
-                    let r#type = properties.get("type").and_then(|inner| inner.as_str());
+                    let r#type = match properties.get("type") {
+                        Some(inner) => inner,
+                        None => {
+                            log::warn!("({}, {}): feature has no type property", xtile, ytile);
+                            continue;
+                        }
+                    };
 
-                    let status = sqlx::query("INSERT INTO fgd (type, geom) VALUES ($1, ST_SetSRID(ST_GeomFromGeoJSON($2), 6668))")
-                        .bind(r#type)
-                        .bind(geometry.to_string())
-                        .execute(&pool)
-                        .await;
-
-                    if let Err(err) = status {
-                        println!("{}", err);
-                    }
+                    r#types.push(r#type.to_string());
+                    geometries.push(geometry.to_string());
                 }
 
-                let n_progress = n_progress.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
-                println!("PROGRESS: {}/{}", n_progress, n_total);
+                match sqlx::query("INSERT INTO fgd (type, geom) SELECT type, ST_SetSRID(ST_GeomFromGeoJSON(geom), 6668) FROM unnest($1, $2) AS _(type, geom)")
+                    .bind(r#types)
+                    .bind(geometries)
+                    .execute(&*pool)
+                    .await
+                {
+                    Ok(_) => (),
+                    Err(err) => {
+                        log::warn!("({}, {}): failed to insert ({})", xtile, ytile, err);
+                        return;
+                    }
+                }
             }
         })
         .buffer_unordered(512)
         .collect::<Vec<_>>()
         .await;
+
+    pb.finish();
 }

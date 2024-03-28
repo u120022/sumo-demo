@@ -5,7 +5,7 @@ use rand::prelude::*;
 const CAR_RATIO: f64 = 0.876;
 
 // interpolation
-const INTERPOLATION: f64 = 0.1;
+const INTERPOLATION: f64 = 1.0;
 
 // reference https://www.nite.go.jp/chem/risk/expofactor_index.html
 const TIME_MEAN: f64 = 1.6125;

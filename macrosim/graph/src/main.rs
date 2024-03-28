@@ -1,4 +1,4 @@
-const THREAD_COUNT: usize = 12;
+const THREAD_COUNT: usize = 8;
 
 #[tokio::main]
 async fn main() {

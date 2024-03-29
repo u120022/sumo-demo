@@ -20,7 +20,8 @@ async fn main() {
         .await
         .unwrap();
 
-    let mut graph = petgraph::Graph::<(f64, f64), f64, petgraph::Undirected>::new_undirected();
+    let mut graph =
+        petgraph::Graph::<(f64, f64), (f64, u32), petgraph::Undirected>::new_undirected();
 
     for node in nodes {
         graph.add_node((node.1, node.2));
@@ -29,8 +30,9 @@ async fn main() {
     for edge in edges {
         let n1 = petgraph::graph::NodeIndex::new(edge.1 as usize - 1);
         let n2 = petgraph::graph::NodeIndex::new(edge.2 as usize - 1);
-        let w = edge.3 / edge.4.unwrap_or(15.0).clamp(2.0, 15.0);
-        graph.add_edge(n1, n2, w);
+        let distance = edge.3;
+        let lane = ((edge.4.unwrap_or(f64::MAX).clamp(3.0, 18.0) / 3.0).ceil() as u32).div_ceil(2);
+        graph.add_edge(n1, n2, (distance, lane));
     }
 
     println!(
@@ -70,13 +72,13 @@ async fn main() {
     println!("[plans stats] plans: {}", plans.len());
 
     let indicator = std::sync::Arc::new(indicatif::ProgressBar::new(plans.len() as u64));
-    let graph = std::sync::Arc::new(graph);
+    let share_graph = std::sync::Arc::new(graph.clone());
     let split_len = plans.len().div_ceil(THREAD_COUNT);
     let mut threads = vec![];
 
     for thread in 0..THREAD_COUNT {
         let indicator = indicator.clone();
-        let graph = graph.clone();
+        let graph = share_graph.clone();
         let plans = plans
             .iter()
             .skip(split_len * thread)
@@ -85,44 +87,39 @@ async fn main() {
             .collect::<Vec<_>>();
 
         let thread = std::thread::spawn(move || {
-            let mut paths = vec![];
+            plans
+                .into_iter()
+                .map(|plan| {
+                    indicator.inc(1);
 
-            for plan in plans {
-                let path = petgraph::algo::astar(
-                    graph.as_ref(),
-                    plan.0,
-                    |n| n == plan.1,
-                    |e| *e.weight(),
-                    |_| 0.0,
-                );
-
-                if let Some((_, path)) = path {
-                    let path = path
+                    petgraph::algo::astar(
+                        graph.as_ref(),
+                        plan.0,
+                        |n| n == plan.1,
+                        |e| e.weight().0 / e.weight().1 as f64,
+                        |_| 0.0,
+                    )
+                })
+                .flatten()
+                .map(|path| {
+                    path.1
                         .into_iter()
-                        .map(|n| n.index() as i32)
-                        .collect::<Vec<_>>();
-
-                    paths.push(path);
-                }
-
-                indicator.inc(1);
-            }
-
-            paths
+                        .map(|n| n.index() as u32)
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>()
         });
         threads.push(thread);
     }
 
-    let mut paths = vec![];
-    for thread in threads {
-        let mut split_paths = thread.join().unwrap();
-        paths.append(&mut split_paths);
-    }
+    let paths = threads
+        .into_iter()
+        .flat_map(|thread| thread.join().unwrap())
+        .collect::<Vec<_>>();
 
     indicator.finish();
-
     println!("[path stats] paths: {}", paths.len());
 
-    let bytes = postcard::to_extend(&paths, vec![]).unwrap();
-    std::fs::write("path.bin", &bytes).unwrap();
+    let bytes = postcard::to_extend(&(graph, paths), vec![]).unwrap();
+    std::fs::write("graph-path.bin", &bytes).unwrap();
 }

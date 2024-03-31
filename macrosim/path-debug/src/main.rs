@@ -38,10 +38,9 @@ async fn main() {
         let mut ys = vec![];
 
         for n in path {
-            let (x, y) = graph
+            let (x, y) = *graph
                 .node_weight(petgraph::graph::NodeIndex::new(*n as usize))
-                .unwrap()
-                .clone();
+                .unwrap();
 
             xs.push(x);
             ys.push(y);

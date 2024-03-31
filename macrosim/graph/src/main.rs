@@ -89,7 +89,7 @@ async fn main() {
         let thread = std::thread::spawn(move || {
             plans
                 .into_iter()
-                .map(|plan| {
+                .filter_map(|plan| {
                     indicator.inc(1);
 
                     petgraph::algo::astar(
@@ -100,7 +100,6 @@ async fn main() {
                         |_| 0.0,
                     )
                 })
-                .flatten()
                 .map(|path| {
                     path.1
                         .into_iter()
@@ -121,5 +120,5 @@ async fn main() {
     println!("[path stats] paths: {}", paths.len());
 
     let bytes = postcard::to_extend(&(graph, paths), vec![]).unwrap();
-    std::fs::write("path.bin", &bytes).unwrap();
+    std::fs::write("path.bin", bytes).unwrap();
 }

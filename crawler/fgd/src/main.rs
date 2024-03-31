@@ -157,7 +157,6 @@ async fn main() {
                     Ok(_) => (),
                     Err(err) => {
                         log::warn!("({}, {}): failed to insert ({})", xtile, ytile, err);
-                        return;
                     }
                 }
             }

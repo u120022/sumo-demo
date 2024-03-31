@@ -6,7 +6,7 @@ async fn main() {
     let pool = sqlx::postgres::PgPoolOptions::new()
         .connect("postgres://postgres:0@localhost/postgres")
         .await
-        .expect("fauled to connect postgresql");
+        .expect("failed to connect postgresql");
 
     #[rustfmt::skip]
     let nodes: Vec<(i32, f64, f64)> = sqlx::query_as("SELECT id, ST_X(geom), ST_Y(geom) FROM node")
@@ -121,5 +121,5 @@ async fn main() {
     println!("[path stats] paths: {}", paths.len());
 
     let bytes = postcard::to_extend(&(graph, paths), vec![]).unwrap();
-    std::fs::write("graph-path.bin", &bytes).unwrap();
+    std::fs::write("path.bin", &bytes).unwrap();
 }

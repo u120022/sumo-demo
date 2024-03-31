@@ -1,7 +1,14 @@
+const SAMPLE_COUNT: usize = 20_000;
+
 #[tokio::main]
 async fn main() {
+    type Data = (
+        petgraph::Graph<(f64, f64), (f64, u32), petgraph::Undirected>,
+        Vec<Vec<u32>>,
+    );
+
     let bytes = std::fs::read("path.bin").unwrap();
-    let paths: Vec<Vec<i32>> = postcard::from_bytes(&bytes).unwrap();
+    let (graph, paths): Data = postcard::from_bytes(&bytes).unwrap();
     drop(bytes);
 
     #[rustfmt::skip]
@@ -9,12 +16,6 @@ async fn main() {
         .connect("postgres://postgres:0@localhost/postgres")
         .await
         .expect("failed to connect postgresql");
-
-    #[rustfmt::skip]
-    let nodes: Vec<(i32, f64, f64)> = sqlx::query_as("SELECT id, ST_X(geom), ST_Y(geom) FROM node")
-        .fetch_all(&pool)
-        .await
-        .unwrap();
 
     #[rustfmt::skip]
     sqlx::query("DROP TABLE IF EXISTS path")
@@ -28,15 +29,22 @@ async fn main() {
         .await
         .unwrap();
 
-    let pb = indicatif::ProgressBar::new(paths.len() as u64);
+    let indicator = indicatif::ProgressBar::new(SAMPLE_COUNT as u64);
 
+    let mut rng = rand::thread_rng();
+    let paths = rand::seq::SliceRandom::choose_multiple(paths.as_slice(), &mut rng, SAMPLE_COUNT);
     for path in paths {
         let mut xs = vec![];
         let mut ys = vec![];
 
         for n in path {
-            xs.push(nodes[n as usize].1);
-            ys.push(nodes[n as usize].2);
+            let (x, y) = graph
+                .node_weight(petgraph::graph::NodeIndex::new(*n as usize))
+                .unwrap()
+                .clone();
+
+            xs.push(x);
+            ys.push(y);
         }
 
         #[rustfmt::skip]
@@ -47,8 +55,8 @@ async fn main() {
             .await
             .unwrap();
 
-        pb.inc(1);
+        indicator.inc(1);
     }
 
-    pb.finish();
+    indicator.finish();
 }
